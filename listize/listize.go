@@ -1,11 +1,20 @@
 package listize
 
 import (
+	"go/ast"
 	"go/build"
+	"go/parser"
+	"go/printer"
+	"go/token"
 	"log"
 	"path/filepath"
 	"strings"
 )
+
+type Material struct {
+	FilePath string
+	Structs  []Struct
+}
 
 type Struct struct {
 	Name   string
@@ -23,12 +32,24 @@ func init() {
 }
 
 func Exec(dir string, types []string) error {
+	panic("must implement")
+}
+
+func ExtractMaterials(dir string) ([]Material, error) {
 	paths, err := ExtractFilePaths(dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	paths = Exclude(paths, "_gen.go") // todo
-	return nil
+
+	fset := token.NewFileSet()
+	for _, path := range paths {
+		_, err := parser.ParseFile(fset, path, nil, parser.Mode(0))
+		if err != nil {
+			return nil, err
+		}
+	}
+	return nil, nil
 }
 
 func ExtractFilePaths(dir string) ([]string, error) {
@@ -60,4 +81,63 @@ func Exclude(paths []string, suffix string) []string {
 	}
 
 	return paths
+}
+
+var astPrint = printer.Fprint
+
+func ExtractStructs(fset *token.FileSet, f *ast.File) ([]Struct, error) {
+	structCh := make(chan Struct)
+	doneCh := make(chan struct{})
+	errCh := make(chan error)
+
+	go func() {
+		defer close(doneCh)
+
+		ast.Inspect(f, func(node ast.Node) bool {
+			typeSpec, ok := node.(*ast.TypeSpec)
+			if !ok {
+				return true // recursive
+			}
+			structType, ok := typeSpec.Type.(*ast.StructType)
+			if !ok {
+				return false // stop
+			}
+
+			fields := make([]Field, 0, 10)
+
+			for _, field := range structType.Fields.List {
+				for _, name := range field.Names {
+					var b strings.Builder
+
+					if err := astPrint(&b, fset, field.Type); err != nil {
+						errCh <- err
+					}
+
+					fields = append(fields, Field{
+						Name: name.Name,
+						Type: b.String(),
+					})
+				}
+			}
+
+			structCh <- Struct{
+				Name:   typeSpec.Name.Name,
+				Fields: fields,
+			}
+
+			return false
+		})
+	}()
+
+	ss := make([]Struct, 0, 10)
+	for {
+		select {
+		case s := <-structCh:
+			ss = append(ss, s)
+		case err := <-errCh:
+			return nil, err
+		case <-doneCh:
+			return ss, nil
+		}
+	}
 }

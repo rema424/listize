@@ -1,9 +1,14 @@
 package listize
 
 import (
+	"go/parser"
+	"go/token"
+	"io"
 	"os"
 	"reflect"
 	"testing"
+
+	"golang.org/x/xerrors"
 )
 
 func TestExtractFilePaths(t *testing.T) {
@@ -83,5 +88,79 @@ func TestExclude(t *testing.T) {
 				t.Errorf("Exclude() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestExtractStructs(t *testing.T) {
+	const source = `
+package source
+
+import (
+  "another"
+)
+
+const const_1 = "constant"
+
+var var_1 = "variable"
+
+type Struct_1 struct {
+  Field_1 string
+  Field_2 int
+}
+
+type Struct_2 struct {
+  Field_1 another.Field_1
+  Field_2 *another.Field_2
+}
+
+type Interface interface{
+  Method_1()
+}
+`
+	want := []Struct{
+		{
+			Name: "Struct_1",
+			Fields: []Field{
+				{Name: "Field_1", Type: "string"},
+				{Name: "Field_2", Type: "int"},
+			},
+		},
+		{
+			Name: "Struct_2",
+			Fields: []Field{
+				{Name: "Field_1", Type: "another.Field_1"},
+				{Name: "Field_2", Type: "*another.Field_2"},
+			},
+		},
+	}
+
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "example.go", source, parser.Mode(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ExtractStructs(fset, f)
+	if err != nil {
+		t.Fatal(err)
+	} else {
+		t.Logf("%+v\n", got)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ExtractStructs() = %v, want %v", got, want)
+	}
+
+	tmp := astPrint
+	defer func() {
+		astPrint = tmp
+	}()
+	astPrint = func(output io.Writer, fset *token.FileSet, node interface{}) error {
+		return xerrors.New("test error")
+	}
+
+	_, err = ExtractStructs(fset, f)
+	if err == nil {
+		t.Error("want non-nil error")
 	}
 }
