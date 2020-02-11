@@ -42,14 +42,27 @@ func ExtractMaterials(dir string) ([]Material, error) {
 	}
 	paths = Exclude(paths, "_gen.go") // todo
 
+	materials := make([]Material, 0, len(paths))
+
 	fset := token.NewFileSet()
 	for _, path := range paths {
-		_, err := parser.ParseFile(fset, path, nil, parser.Mode(0))
+		f, err := parser.ParseFile(fset, path, nil, parser.Mode(0))
 		if err != nil {
 			return nil, err
 		}
+
+		structs, err := ExtractStructs(fset, f)
+		if err != nil {
+			return nil, err
+		}
+
+		materials = append(materials, Material{
+			FilePath: path,
+			Structs:  structs,
+		})
 	}
-	return nil, nil
+
+	return materials, nil
 }
 
 func ExtractFilePaths(dir string) ([]string, error) {
