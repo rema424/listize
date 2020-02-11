@@ -49,3 +49,39 @@ func TestExtractFilePaths(t *testing.T) {
 		})
 	}
 }
+
+func TestExclude(t *testing.T) {
+	type args struct {
+		paths  []string
+		suffix string
+	}
+	tests := []struct {
+		name string
+		args args
+		want []string
+	}{
+		{
+			args: args{[]string{}, ""},
+			want: []string{},
+		},
+		{
+			args: args{[]string{}, "_gen.go"},
+			want: []string{},
+		},
+		{
+			args: args{[]string{"aaa.go", "bbb/ccc.go", "ddd_gen.go", "eee/fff_gen.go"}, "_gen.go"},
+			want: []string{"aaa.go", "bbb/ccc.go"},
+		},
+		{
+			args: args{[]string{"aaa.go", "bbb/ccc.go", "ddd_gen.go", "eee/fff_gen.go"}, ""},
+			want: []string{"aaa.go", "bbb/ccc.go", "ddd_gen.go", "eee/fff_gen.go"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Exclude(tt.args.paths, tt.args.suffix); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Exclude() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

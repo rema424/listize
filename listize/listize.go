@@ -47,7 +47,7 @@ func ExtractFilePaths(dir string) ([]string, error) {
 }
 
 func Exclude(paths []string, suffix string) []string {
-	if len(paths) == 0 {
+	if len(paths) == 0 || suffix == "" {
 		return paths
 	}
 
