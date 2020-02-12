@@ -16,7 +16,7 @@ func TestExtractFilePaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := ExtractFilePaths("testdata")
+	_, _, err := ExtractFilePaths("testdata")
 	if err == nil {
 		t.Errorf("want non-nil error")
 	}
@@ -43,13 +43,18 @@ func TestExtractFilePaths(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got, err := ExtractFilePaths("testdata")
+			gotPkg, gotPaths, err := ExtractFilePaths("testdata")
 			if err != nil {
 				t.Error(err)
 			}
-			want := filepaths[:i+1]
-			if !reflect.DeepEqual(got, want) {
-				t.Errorf("ExtractFilePaths() = %v, want %v", got, want)
+
+			wantPkg := "testdata"
+			wantPaths := filepaths[:i+1]
+			if gotPkg != wantPkg {
+				t.Errorf("ExtractFilePaths() pkgName = %v, want %v", gotPkg, wantPkg)
+			}
+			if !reflect.DeepEqual(gotPaths, wantPaths) {
+				t.Errorf("ExtractFilePaths() paths = %v, want %v", gotPaths, wantPaths)
 			}
 		})
 	}
@@ -223,22 +228,28 @@ func TestExtractMaterials(t *testing.T) {
 		t.Errorf("ExtractMaterials() error = %v, want %v", err, nil)
 	}
 	want := []Material{
-		{FilePath: "testdata/source1.go", Structs: []Struct{
-			{Name: "Struct_1", Fields: []Field{
-				{Name: "Field_1", Type: "string"},
-				{Name: "Field_2", Type: "int"},
+		{
+			PkgName:  "source",
+			FilePath: "testdata/source1.go",
+			Structs: []Struct{
+				{Name: "Struct_1", Fields: []Field{
+					{Name: "Field_1", Type: "string"},
+					{Name: "Field_2", Type: "int"},
+				}},
+				{Name: "Struct_2", Fields: []Field{
+					{Name: "Field_1", Type: "another.Field_1"},
+					{Name: "Field_2", Type: "*another.Field_2"},
+				}},
 			}},
-			{Name: "Struct_2", Fields: []Field{
-				{Name: "Field_1", Type: "another.Field_1"},
-				{Name: "Field_2", Type: "*another.Field_2"},
+		{
+			PkgName:  "source",
+			FilePath: "testdata/source2.go",
+			Structs: []Struct{
+				{Name: "Struct_3", Fields: []Field{
+					{Name: "Field_1", Type: "[]byte"},
+					{Name: "Field_2", Type: "int64"},
+				}},
 			}},
-		}},
-		{FilePath: "testdata/source2.go", Structs: []Struct{
-			{Name: "Struct_3", Fields: []Field{
-				{Name: "Field_1", Type: "[]byte"},
-				{Name: "Field_2", Type: "int64"},
-			}},
-		}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ExtractMaterials() = %v, want %v", got, want)

@@ -12,6 +12,7 @@ import (
 )
 
 type Material struct {
+	PkgName  string
 	FilePath string
 	Structs  []Struct
 }
@@ -36,7 +37,7 @@ func Exec(dir string, types []string) error {
 }
 
 func ExtractMaterials(dir string) ([]Material, error) {
-	paths, err := ExtractFilePaths(dir)
+	pkgName, paths, err := ExtractFilePaths(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -44,8 +45,8 @@ func ExtractMaterials(dir string) ([]Material, error) {
 
 	materials := make([]Material, 0, len(paths))
 
-	fset := token.NewFileSet()
 	for _, path := range paths {
+		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, path, nil, parser.Mode(0))
 		if err != nil {
 			return nil, err
@@ -57,6 +58,7 @@ func ExtractMaterials(dir string) ([]Material, error) {
 		}
 
 		materials = append(materials, Material{
+			PkgName:  pkgName,
 			FilePath: path,
 			Structs:  structs,
 		})
@@ -65,19 +67,19 @@ func ExtractMaterials(dir string) ([]Material, error) {
 	return materials, nil
 }
 
-func ExtractFilePaths(dir string) ([]string, error) {
+func ExtractFilePaths(dir string) (pkgName string, paths []string, err error) {
 	pkg, err := build.Default.ImportDir(dir, build.ImportComment)
 	if err != nil {
-		return nil, err
+		return "", nil, err
 	}
 
-	paths := make([]string, 0, len(pkg.GoFiles))
+	paths = make([]string, 0, len(pkg.GoFiles))
 
 	for _, f := range pkg.GoFiles {
 		paths = append(paths, filepath.Join(pkg.Dir, f))
 	}
 
-	return paths, nil
+	return pkg.Name, paths, nil
 }
 
 func Exclude(paths []string, suffix string) []string {
@@ -154,3 +156,7 @@ func ExtractStructs(fset *token.FileSet, f *ast.File) ([]Struct, error) {
 		}
 	}
 }
+
+// func MakeSource() string {
+
+// }
