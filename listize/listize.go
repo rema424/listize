@@ -1,6 +1,8 @@
 package listize
 
 import (
+	"bytes"
+	"fmt"
 	"go/ast"
 	"go/build"
 	"go/parser"
@@ -9,6 +11,17 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/tools/imports"
+	"golang.org/x/xerrors"
+)
+
+var (
+	ErrNoStructs      = xerrors.New("listize: no structs")
+	ErrNoStructName   = xerrors.New("listize: no struct name")
+	ErrNoStructFields = xerrors.New("listize: no struct fields")
+	ErrNoFieldName    = xerrors.New("listize: no field name")
+	ErrNoFieldType    = xerrors.New("listize: no field type")
 )
 
 type Material struct {
@@ -157,6 +170,74 @@ func ExtractStructs(fset *token.FileSet, f *ast.File) ([]Struct, error) {
 	}
 }
 
-// func MakeSource() string {
+func MakeFileSource(m Material) (string, error) {
+	if len(m.Structs) == 0 {
+		return "", ErrNoStructs
+	}
 
-// }
+	var b bytes.Buffer
+	b.WriteString("package ")
+	b.WriteString(m.PkgName)
+	b.WriteString("\n")
+
+	for _, s := range m.Structs {
+		b.WriteString(fmt.Sprintf("type %ss []*%s\n", s.Name, s.Name))
+		for _, f := range s.Fields {
+			b.WriteString(fmt.Sprintf("func (ss %ss) %ss() []%s { ", s.Name, f.Name, f.Type))
+			b.WriteString(fmt.Sprintf("res := make([]%s, len(ss)); ", f.Type))
+			b.WriteString("for i, s := range ss { ")
+			b.WriteString("res[i] = s." + f.Name + " ")
+			b.WriteString("}; ")
+			b.WriteString("return res ")
+			b.WriteString("}\n\n")
+		}
+	}
+
+	src, err := imports.Process(m.FilePath, b.Bytes(), nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(src), nil
+}
+
+func MakeFuncSource(s Struct) (string, error) {
+	if s.Name == "" {
+		return "", ErrNoStructName
+	}
+	if len(s.Fields) == 0 {
+		return "", ErrNoStructFields
+	}
+
+	var b bytes.Buffer
+
+	b.WriteString("package hack\n")
+	b.WriteString(fmt.Sprintf("type %sList []*%s\n", s.Name, s.Name))
+
+	for _, f := range s.Fields {
+		if f.Name == "" {
+			return "", ErrNoFieldName
+		}
+		if f.Type == "" {
+			return "", ErrNoFieldType
+		}
+
+		b.WriteString(fmt.Sprintf("func (list %sList) %ss() []%s { ", s.Name, f.Name, f.Type))
+		b.WriteString(fmt.Sprintf("res := make([]%s, len(list)); ", f.Type))
+		b.WriteString("for i, v := range list { ")
+		b.WriteString("res[i] = v." + f.Name + " ")
+		b.WriteString("}; ")
+		b.WriteString("return res ")
+		b.WriteString("}\n\n")
+	}
+
+	src, err := imports.Process("", b.Bytes(), nil)
+	if err != nil {
+		return "", err
+	}
+
+	str := strings.Replace(string(src), "package hack\n", "", 1)
+	str = strings.TrimLeft(str, " \n")
+
+	return str, nil
+}

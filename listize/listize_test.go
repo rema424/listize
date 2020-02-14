@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
+	"golang.org/x/tools/imports"
 	"golang.org/x/xerrors"
 )
 
@@ -253,5 +255,139 @@ func TestExtractMaterials(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ExtractMaterials() = %v, want %v", got, want)
+	}
+}
+
+func TestMakeSource(t *testing.T) {
+	type args struct {
+		m Material
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr bool
+	}{
+		{
+			name: "len(Material.Structs)==0",
+			args: args{Material{
+				PkgName:  "",
+				FilePath: "",
+				Structs:  []Struct{},
+			}},
+			want:    ``,
+			wantErr: true,
+		},
+		{
+			name: `Material.PkgName==""`,
+			args: args{Material{
+				PkgName:  "",
+				FilePath: "",
+				Structs:  []Struct{{}},
+			}},
+			want:    ``,
+			wantErr: true,
+		},
+		{
+			name: `Material.FilePath==""`,
+			args: args{Material{
+				PkgName:  "tmp",
+				FilePath: "",
+				Structs:  []Struct{{}},
+			}},
+			want:    ``,
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := MakeFileSource(tt.args.m)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("MakeSource() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("MakeSource() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMakeFuncSource(t *testing.T) {
+	type args struct {
+		s Struct
+	}
+	tests := []struct {
+		name  string
+		args  args
+		wantS string
+		wantE error
+	}{
+		{
+			name:  `Struct.Name==""`,
+			args:  args{Struct{Name: "", Fields: []Field{}}},
+			wantS: "",
+			wantE: ErrNoStructName,
+		},
+		{
+			name:  `len(Struct.Fields)==0`,
+			args:  args{Struct{Name: "Struct_1", Fields: []Field{}}},
+			wantS: "",
+			wantE: ErrNoStructFields,
+		},
+		{
+			name:  `Field.Name==""`,
+			args:  args{Struct{Name: "Struct_1", Fields: []Field{{"", ""}}}},
+			wantS: "",
+			wantE: ErrNoFieldName,
+		},
+		{
+			name:  `Field.Type==""`,
+			args:  args{Struct{Name: "Struct_1", Fields: []Field{{"Field_1", ""}}}},
+			wantS: "",
+			wantE: ErrNoFieldType,
+		},
+		{
+			name:  `grammer_error`,
+			args:  args{Struct{Name: "Struct_1() {}", Fields: []Field{{"Field_1", "aaaaaaa"}}}},
+			wantS: "",
+			wantE: ErrNoFieldType,
+		},
+		{
+			name: `normal`,
+			args: args{Struct{Name: "Struct_1", Fields: []Field{{Name: "Field_1", Type: "string"}}}},
+			wantS: `type Struct_1List []*Struct_1
+
+func (list Struct_1List) Field_1s() []string {
+  res := make([]string, len(list))
+    for i, v := range list {
+    res[i] = v.Field_1
+  }
+  return res
+}
+`,
+			wantE: nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := MakeFuncSource(tt.args.s)
+			if err != nil {
+				t.Logf("err: %q", err)
+			} else {
+				t.Logf("got: %q", got)
+				t.Logf("want: %q", tt.wantS)
+			}
+			if err != tt.wantE {
+				t.Errorf("MakeFuncSource() error = %v, wantErr %v", err, tt.wantE)
+				return
+			}
+			src, _ := imports.Process("", []byte("package hack\n"+tt.wantS), nil)
+			want := strings.Replace(string(src), "package hack\n", "", 1)
+			want = strings.TrimLeft(want, " \n")
+			if got != want {
+				t.Errorf("MakeFuncSource() = %v, want %v", got, want)
+			}
+		})
 	}
 }
